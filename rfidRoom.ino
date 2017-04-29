@@ -13,7 +13,6 @@
 * SPI SCK     SCK          13 / ICSP-3   52        D13        ICSP-3           15
 *
 * Limitations SoftwareSerial for Modbus
-*
 * The library has the following known limitations:
 * If using multiple software serial ports, only one can receive data at a time.
 * Not all pins on the Mega and Mega 2560 support change interrupts,
