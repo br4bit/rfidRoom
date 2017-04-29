@@ -21,5 +21,19 @@
     <ClInclude Include="__vm\.rfidRoom.vsarduino.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\_micro-api\libraries\MoMatic\src\MoMatic.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\_micro-api\libraries\SimpleModbusSlave\src\SimpleModbusSlave.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\_micro-api\libraries\MoMatic\src\MoMatic.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\_micro-api\libraries\SimpleModbusSlave\src\SimpleModbusSlave.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -48,7 +48,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries\EEPROM\src;$(ProjectDir)..\libraries\rfid-master;G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries\SPI\src;G:\Program Files (x86)\Arduino\libraries;G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries;$(ProjectDir)..\libraries;G:\Program Files (x86)\Arduino\hardware\arduino\avr\cores\arduino;G:\Program Files (x86)\Arduino\hardware\arduino\avr\variants\mega;$(ProjectDir)..\rfidRoom;G:\Program Files (x86)\Arduino\hardware\tools\avr\avr\include\;G:\Program Files (x86)\Arduino\hardware\tools\avr\avr\include\avr\;G:\Program Files (x86)\Arduino\hardware\tools\avr\lib\gcc\avr\4.8.1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\_micro-api\libraries\MoMatic\src;$(ProjectDir)src\_micro-api\libraries\SimpleModbusSlave\src;G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries\SoftwareSerial\src;G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries\EEPROM\src;G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries\SPI\src;$(ProjectDir)..\..\..\Arduino\libraries\rfid-master;$(ProjectDir)..\..\..\Arduino\libraries\Arduino-Scheduler;$(ProjectDir)..\..\..\Arduino\libraries\MoMatic;$(ProjectDir)..\..\..\Arduino\libraries\pt;G:\Program Files (x86)\Arduino\libraries;G:\Program Files (x86)\Arduino\hardware\arduino\avr\libraries;$(ProjectDir)..\..\..\Arduino\libraries;G:\Program Files (x86)\Arduino\hardware\arduino\avr\cores\arduino;G:\Program Files (x86)\Arduino\hardware\arduino\avr\variants\mega;$(ProjectDir)..\rfidRoom;G:\Program Files (x86)\Arduino\hardware\tools\avr\avr\include\;G:\Program Files (x86)\Arduino\hardware\tools\avr\avr\include\avr\;G:\Program Files (x86)\Arduino\hardware\tools\avr\lib\gcc\avr\4.8.1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>$(ProjectDir)__vm\.rfidRoom.vsarduino.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
       <PreprocessorDefinitions>__AVR_ATmega2560__;_VMDEBUG=1;F_CPU=16000000L;ARDUINO=10801;ARDUINO_AVR_MEGA2560;ARDUINO_ARCH_AVR;__cplusplus=201103L;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -80,7 +80,13 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\_micro-api\libraries\MoMatic\src\MoMatic.h" />
+    <ClInclude Include="src\_micro-api\libraries\SimpleModbusSlave\src\SimpleModbusSlave.h" />
     <ClInclude Include="__vm\.rfidRoom.vsarduino.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\_micro-api\libraries\MoMatic\src\MoMatic.cpp" />
+    <ClCompile Include="src\_micro-api\libraries\SimpleModbusSlave\src\SimpleModbusSlave.cpp" />
   </ItemGroup>
   <PropertyGroup>
     <DebuggerFlavor>VisualMicroDebugger</DebuggerFlavor>
@@ -88,4 +94,9 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties VM.DebugVariablesWindow.ColumnVisibleVariableValueMin="1" arduino.upload.port="COM3" />
+    </VisualStudio>
+  </ProjectExtensions>
 </Project>

@@ -1,37 +1,94 @@
+/**
+* Typical pin layout used:
+* -----------------------------------------------------------------------------------------
+*             MFRC522      Arduino       Arduino   Arduino    Arduino          Arduino
+*             Reader/PCD   Uno/101       Mega      Nano v3    Leonardo/Micro   Pro Micro
+* Signal      Pin          Pin           Pin       Pin        Pin              Pin
+* -----------------------------------------------------------------------------------------
+* RST/Reset   RST          9             5         D9         RESET/ICSP-5     RST
+* SPI SS 0    SDA(SS)      ** custom, take a unused pin, only HIGH/LOW required ** (53)
+* SPI SS 1    SDA(SS)      ** custom, take a unused pin, only HIGH/LOW required ** (31)
+* SPI MOSI    MOSI         11 / ICSP-4   51        D11        ICSP-4           16
+* SPI MISO    MISO         12 / ICSP-1   50        D12        ICSP-1           14
+* SPI SCK     SCK          13 / ICSP-3   52        D13        ICSP-3           15
+*
+* Limitations SoftwareSerial for Modbus
+*
+* The library has the following known limitations:
+* If using multiple software serial ports, only one can receive data at a time.
+* Not all pins on the Mega and Mega 2560 support change interrupts,
+* so only the following can be used for RX: 10, 11, 12, 13, 14, 15,
+* 50, 51, 52, 53, A8 (62), A9 (63), A10 (64), A11 (65), A12 (66), A13 (67), A14 (68), A15 (69).
+* Not all pins on the Leonardo and Micro support change interrupts,
+* so only the following can be used for RX: 8, 9, 10, 11, 14 (MISO), 15 (SCK), 16 (MOSI).
+* On Arduino or Genuino 101 the current maximum RX speed is 57600bps
+* On Arduino or Genuino 101 RX doesn't work on Pin 13
+*/
+
+#include <MoMatic.h>
 #include <EEPROM.h>
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define SS_PIN 53
-#define RST_PIN 5
+#define SS0_PIN 53
+#define SS1_PIN 31
+#define RST_PIN 9
+#define RED_LED 37
+#define YELLOW_LED 33
+#define GREEN_LED 39
+
+byte ssPins[] = { SS0_PIN, SS1_PIN };
 
 struct Room
 {
 	byte id[4];
 	unsigned int number;
 };
-// Empty struct used for reinitialize the struct because can't dealloc struct
+// Empty struct used for reinitialize the struct
 static struct Room EmptyStruct;
-MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
+MFRC522 rfid[2];
 MFRC522::MIFARE_Key key;
-// Init array that will store new NUID 
+// Init array that will store new NUID
 byte tempID[4];
+byte tempID2[4];
+unsigned int accessCounter[] = { 0,0,0,0,0 }; //counter array number of accesses for each keys
 unsigned int addressLocation; //last address of value in memory
 Room card[10];
 unsigned int piccSize = 0;
+bool static indoor = false;
+MoMatic momatic; //initialize an instance of the class
+enum
+{
+	INDOOR,
+	ROOM,
+	NUMBEROFKEYS,
+	KEY0,
+	KEY1,
+	KEY2,
+	KEY3,
+	KEY4,
+	HOLDING_REGS_SIZE
+};
+unsigned int registri[HOLDING_REGS_SIZE];
 
 void setup()
 {
-	pinMode(LED_BUILTIN, OUTPUT);
-	Serial.begin(9600);
+	momatic.momatic_setup(registri, HOLDING_REGS_SIZE);
+	pinMode(RED_LED, OUTPUT);
+	pinMode(YELLOW_LED, OUTPUT);
+	pinMode(GREEN_LED, OUTPUT);
 	SPI.begin(); // Init SPI bus
-	rfid.PCD_Init(); // Init MFRC522 
-	//Auth Key
-	for (byte i = 0; i < 6; i++) {
-		key.keyByte[i] = 0xFF;
-	}
+	rfid[0].PCD_Init(ssPins[0], RST_PIN);
+	rfid[1].PCD_Init(ssPins[1], RST_PIN);
+	/// Auth Key
+	key.keyByte[0] = 0xFF;
+	key.keyByte[1] = 0xFF;
+	key.keyByte[2] = 0xFF;
+	key.keyByte[3] = 0xFF;
+	key.keyByte[4] = 0xFF;
+	key.keyByte[5] = 0xFF;
 	LoadStructFromEEPROM();
-	Serial.println("Master Card:...");
+	Serial.println("Master Card:");
 	Serial.print("Numero stanza: ");
 	Serial.print(card[0].number);
 	Serial.println();
@@ -39,37 +96,61 @@ void setup()
 	Serial.println();
 	Serial.print("Last value address: ");
 	Serial.println(addressLocation);
-	Serial.println("Utenti:");
+	Serial.println("Cards Memorizzate:");
 	StampUser();
+	digitalWrite(RED_LED, HIGH);
 	//load struct from eeprom and master to position 0
 }
 
 void loop()
 {
-	FreeArray();
-	digitalWrite(LED_BUILTIN, HIGH);
+	momatic.update();
+	registri[INDOOR] = (unsigned int)indoor;
+	registri[ROOM] = card[0].number;
+	registri[NUMBEROFKEYS] = CountElements();
+	registri[KEY0] = accessCounter[0];
+	registri[KEY1] = accessCounter[1];
+	registri[KEY2] = accessCounter[2];
+	registri[KEY3] = accessCounter[3];
+	registri[KEY4] = accessCounter[4];
+	/*Check led and presence*/
+	if (indoor && (digitalRead(GREEN_LED)) == HIGH) {
+		digitalWrite(RED_LED, LOW);
+		indoor = true;
+	}
+	else {
+		if (digitalRead(RED_LED) == LOW)
+			digitalWrite(RED_LED, HIGH);
+		indoor = false;
+	}
+
+	if (digitalRead(YELLOW_LED == HIGH))
+		digitalWrite(YELLOW_LED, LOW);
+
 	CheckCard();
+	CheckCardPresence();
+	momatic.update();
 }
 
 void CheckCard() {
 	// Look for new cards
-	if (!rfid.PICC_IsNewCardPresent())
+	if (!rfid[0].PICC_IsNewCardPresent())
 		return;
 
 	// Select one of the cards
-	if (!rfid.PICC_ReadCardSerial())
+	if (!rfid[0].PICC_ReadCardSerial())
 		return;
 
 	for (byte i = 0; i < 4; i++) {
-		tempID[i] = rfid.uid.uidByte[i];
+		tempID[i] = rfid[0].uid.uidByte[i];
 	}
 
 	Serial.print(F("Card UID:"));
-	dump_byte_array(rfid.uid.uidByte, rfid.uid.size);
+	dump_byte_array(rfid[0].uid.uidByte, rfid[0].uid.size);
 	Serial.println();
 	Serial.print(F("PICC type: "));
-	MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
-	Serial.println(rfid.PICC_GetTypeName(piccType));
+	MFRC522::PICC_Type piccType = rfid[0].PICC_GetType(rfid[0].uid.sak);
+	Serial.println(rfid[0].PICC_GetTypeName(piccType));
 	// Check for compatibility
 	if (piccType != MFRC522::PICC_TYPE_MIFARE_MINI
 		&&  piccType != MFRC522::PICC_TYPE_MIFARE_1K
@@ -79,11 +160,10 @@ void CheckCard() {
 	}
 
 	if (IsMaster()) {
-		FreeArray();;
-		digitalWrite(LED_BUILTIN, LOW);
-		delay(1000);
-		digitalWrite(LED_BUILTIN, HIGH);
-		FreeStruct();
+		//BlinkYellow(50);
+		FreeArray();
+		digitalWrite(RED_LED, LOW);
+		digitalWrite(GREEN_LED, LOW);
 		//picc size for dumpinfo
 		if (piccType == MFRC522::PICC_TYPE_MIFARE_MINI)
 			piccSize = 320;
@@ -91,54 +171,99 @@ void CheckCard() {
 			piccSize = 1024;
 		else if (piccType == MFRC522::PICC_TYPE_MIFARE_4K)
 			piccSize = 4096;
+		FreeStruct();
 		DumpCard();
 		ClearEEPROM();
 		SaveStructToEEPROM();
 		StampUser();
 		LoadMaster();
-		Serial.print("Numero stanza: ");
-		Serial.print(card[0].number);
-		Serial.println();
-		Serial.print("Last value address: ");
-		Serial.println(addressLocation);
-		Serial.print("Master Card: ");
-		dump_byte_array(card[0].id, 4);
-		Serial.println();
 	}
 	else if (IsGuest()) {
 		FreeArray();
-		OnOffBlink(1000, 2000);
-		Serial.println("apri porta card trovata");
+		digitalWrite(GREEN_LED, HIGH);
+		digitalWrite(RED_LED, LOW);
+		Serial.println("Apri Porta");
+		delay(800);
+		digitalWrite(GREEN_LED, LOW);
+		for (byte j = 0; j < 5; j++) {
+			Serial.println();
+			Serial.print("Card ");
+			Serial.print(j + 1);
+			Serial.print(": ");
+			Serial.print(accessCounter[j]);
+		}
 	}
-	else {
-		Serial.println("card non presente");
+	rfid[0].PICC_HaltA();
+	rfid[0].PCD_StopCrypto1();
+	if (digitalRead(RED_LED == LOW))
+		digitalWrite(RED_LED, HIGH);
+	FreeArray();
+}
+
+void CheckCardPresence() {
+
+	// Look for new cards
+	if (!rfid[1].PICC_IsNewCardPresent()) {
+		if (digitalRead(GREEN_LED == HIGH))
+			digitalWrite(GREEN_LED, LOW);
+		return;
 	}
-	rfid.PICC_HaltA();
-	rfid.PCD_StopCrypto1();
+
+	// Select one of the cards
+	if (!rfid[1].PICC_ReadCardSerial()) {
+		if (digitalRead(GREEN_LED == HIGH))
+			digitalWrite(GREEN_LED, LOW);
+		return;
+	}
+	for (byte i = 0; i < 4; i++) {
+		tempID2[i] = rfid[1].uid.uidByte[i];
+	}
+	if (IsGuestIndoor()) {
+
+		do {
+			digitalWrite(GREEN_LED, HIGH);
+			indoor = true;
+			digitalWrite(RED_LED, LOW);
+
+		} while ((rfid[1].PICC_IsNewCardPresent() && rfid[1].PICC_ReadCardSerial()));
+	}
+	FreeArray2();
+	rfid[1].PCD_StopCrypto1();
+}
+
+
+void BlinkYellow(unsigned int time) {
+	if (digitalRead(YELLOW_LED) == LOW) {
+		for (unsigned int i = 0; i < time; i++) {
+			OnOffBlink(200, 100);
+		}
+	}
 }
 
 void LoadMaster() {
 	EEPROM.get(EEPROM.length() - 6, card[0]);
 }
 
-void OnOffBlink(int tOn, int tOff) {
+void OnOffBlink(unsigned int tOn, unsigned int tOff) {
+	if (digitalRead(RED_LED) == HIGH)
+		digitalWrite(RED_LED, LOW);
 
-	static int timer = tOn;
-	static long previousMillis;
+	static unsigned int timer = tOn;
+	static unsigned long previousMillis;
 	if ((millis() - previousMillis) >= timer) {
-		if (digitalRead(LED_BUILTIN) == HIGH) {
+		if (digitalRead(YELLOW_LED) == HIGH) {
 			timer = tOff;
 		}
 		else {
 			timer = tOn;
 		}
-		digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+		digitalWrite(YELLOW_LED, !digitalRead(YELLOW_LED));
 		previousMillis = millis();
 	}
 }
 
 void StampUser() {
-	for (int i = 1; i <= CountElements(); i++) {
+	for (unsigned int i = 1; i <= CountElements(); i++) {
 		Serial.println();
 		Serial.println("Card: ");
 		dump_byte_array(card[i].id, 4);
@@ -152,10 +277,9 @@ void StampUser() {
 	Serial.println();
 }
 
-
 void LoadStructFromEEPROM() {
 	unsigned int address = 1;
-	int i = 1;
+	unsigned int i = 1;
 	/*Load Master to position 0*/
 	LoadMaster();
 	addressLocation = EEPROM.read(0);
@@ -168,9 +292,9 @@ void LoadStructFromEEPROM() {
 	}
 }
 
-int CountElements() {
-	int count = 0;
-	for (int i = 1; i < sizeof(card) / 10; i++) {
+unsigned int CountElements() {
+	unsigned int count = 0;
+	for (unsigned int i = 1; i < sizeof(card) / 10; i++) {
 		if (card[i].number != 0) {
 			count++;
 		}
@@ -179,9 +303,9 @@ int CountElements() {
 }
 
 void SaveStructToEEPROM() {
-	int n = CountElements();
+	unsigned int n = CountElements();
 	unsigned int address = 1;
-	int i = 1;
+	unsigned int i = 1;
 	if (addressLocation == 0) {
 		while (i <= n) {
 			EEPROM.put(address, card[i]);
@@ -190,7 +314,7 @@ void SaveStructToEEPROM() {
 		}
 	}
 	else {
-		for (int i = 1; i <= n; i++) {
+		for (; i <= n; i++) {
 			EEPROM.put(address, card[i]);
 			address = address + sizeof(card[i]);
 		}
@@ -202,61 +326,50 @@ void SaveStructToEEPROM() {
 void DumpCard() {
 	byte byteHigh;
 	byte byteLow;
-	byte blockAddr = 4;
-	byte trailerBlock = 7;
+	byte blockAddr = 8;
+	byte trailerBlock = 11;
 	MFRC522::StatusCode status;
 	byte buffer[18];
 	byte size = sizeof(buffer);
-	int j = 1;
+	unsigned int j = 1;
 	unsigned int roomNumber;
 	unsigned int totalBlocks = piccSize / 16;
-	Serial.println(F("Total blocks: "));
-	Serial.print(totalBlocks);
-	Serial.println();
 	// Authenticate using key A
-	Serial.println(F("Authenticating...Trailer block: "));
-	Serial.print(trailerBlock);
-	Serial.println();
-	status = (MFRC522::StatusCode) rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(rfid.uid));
+	status = (MFRC522::StatusCode) rfid[0].PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(rfid[0].uid));
 	if (status != MFRC522::STATUS_OK) {
-		Serial.print(F("PCD_Authenticate() failed: "));
-		Serial.println(rfid.GetStatusCodeName(status));
+		digitalWrite(RED_LED, HIGH);
+		digitalWrite(GREEN_LED, HIGH);
+		delay(1000);
 		return;
 	}
-	while (blockAddr < totalBlocks) {
-		if (blockAddr + 1 % 4 == 0) {
+	while (blockAddr < totalBlocks - 1) {
+		OnOffBlink(300, 100);
+		if (blockAddr == trailerBlock) {
 			trailerBlock = trailerBlock + 4;
-			blockAddr = blockAddr + 1;
+			blockAddr++;
 			// Authenticate using key A
-			Serial.println(F("Authenticating....Trailer block: "));
-			Serial.print(trailerBlock);
-			Serial.println();
-			status = (MFRC522::StatusCode) rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(rfid.uid));
+			status = (MFRC522::StatusCode) rfid[0].PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(rfid[0].uid));
 			if (status != MFRC522::STATUS_OK) {
-				Serial.print(F("PCD_Authenticate() failed: "));
-				Serial.println(rfid.GetStatusCodeName(status));
+				digitalWrite(RED_LED, HIGH);
+				digitalWrite(GREEN_LED, HIGH);
+				delay(3000);
 				return;
 			}
 		}
-		else {
-			// Read data from block
-			status = (MFRC522::StatusCode) rfid.MIFARE_Read(blockAddr, buffer, &size);
-			if (status != MFRC522::STATUS_OK) {
-				Serial.print(F("MIFARE_Read() failed: "));
-				Serial.println(rfid.GetStatusCodeName(status));
-				break;
-			}
-			if (buffer[0] == 0 &&
-				buffer[1] == 0 &&
-				buffer[2] == 0 &&
-				buffer[3] == 0 &&
-				buffer[4] == 0 &&
-				buffer[5] == 0) {
-				Serial.println("blocco fermato: ");
-				Serial.print(blockAddr);
-				Serial.println();
-				break;
-			}
+		// Read data from block
+		status = (MFRC522::StatusCode) rfid[0].MIFARE_Read(blockAddr, buffer, &size);
+		if (status != MFRC522::STATUS_OK) {
+			digitalWrite(RED_LED, HIGH);
+			digitalWrite(GREEN_LED, HIGH);
+			delay(3000);
+			break;
+		}
+		if (buffer[0] != 0 &&
+			buffer[1] != 0 &&
+			buffer[2] != 0 &&
+			buffer[3] != 0 &&
+			buffer[4] != 0 &&
+			buffer[5] != 0) {
 			byteHigh = buffer[4];
 			byteLow = buffer[5];
 			roomNumber = ByteToInt(byteHigh, byteLow);
@@ -264,27 +377,25 @@ void DumpCard() {
 				//load id from buff to struct
 				for (int i = 0; i < 4; i++)
 					card[j].id[i] = buffer[i];
-				//load numer room to struct
-				card[1].number = roomNumber;
-				blockAddr = blockAddr + 1;
-				FreeBuffer(buffer);
+				//load number room to struct
+				card[j].number = roomNumber;
 				j++;
+				Serial.println("Caricata card.");
 			}
-			else
-				blockAddr = blockAddr + 1;
-
-			FreeBuffer(buffer);
 		}
+		blockAddr++;
+		FreeBuffer(buffer);
 	}
-	rfid.PICC_HaltA();
-	rfid.PCD_StopCrypto1();
+	rfid[0].PICC_HaltA();
+	rfid[0].PCD_StopCrypto1();
 	Serial.println("Dump completato");
 }
 
 void ClearEEPROM() {
-	for (int i = 0; i < addressLocation; i++)
+	for (unsigned int i = 0; i < addressLocation; i++) {
+		OnOffBlink(300, 100);
 		EEPROM.write(i, 0);
-
+	}
 	addressLocation = 0;
 }
 
@@ -293,15 +404,30 @@ void FreeBuffer(byte *buff) {
 		buff[i] = 0;
 }
 
+bool IsGuestIndoor() {
+	unsigned int n = CountElements();
+	for (unsigned int i = 1; i <= n; i++) {
+		if (card[i].id[0] == tempID2[0] &&
+			card[i].id[1] == tempID2[1] &&
+			card[i].id[2] == tempID2[2] &&
+			card[i].id[3] == tempID2[3] &&
+			card[i].number == card[0].number) {
+			digitalWrite(GREEN_LED, HIGH);
+			return true;
+		}
+	}
+	return false;
+}
+
 bool IsGuest() {
-	int n = CountElements();
-	for (int i = 1; i <= n; i++) {
+	unsigned int n = CountElements();
+	for (unsigned int i = 1; i <= n; i++) {
 		if (card[i].id[0] == tempID[0] &&
 			card[i].id[1] == tempID[1] &&
 			card[i].id[2] == tempID[2] &&
 			card[i].id[3] == tempID[3] &&
 			card[i].number == card[0].number) {
-			Serial.println("Trovata card");
+			accessCounter[i - 1]++;
 			return true;
 		}
 	}
@@ -313,7 +439,6 @@ bool IsMaster() {
 		card[0].id[1] == tempID[1] &&
 		card[0].id[2] == tempID[2] &&
 		card[0].id[3] == tempID[3]) {
-		Serial.println("Trovato master");
 		return true;
 	}
 	return false;
@@ -324,10 +449,15 @@ void FreeArray() {
 		tempID[i] = 0;
 	}
 }
+void FreeArray2() {
+	for (int i = 0; i < 4; i++) {
+		tempID2[i] = 0;
+	}
+}
 
 void FreeStruct() {
-	int size = CountElements();
-	for (int i = 0; i < size; i++)
+	unsigned int size = CountElements();
+	for (unsigned int i = 1; i < size; i++)
 		card[i] = EmptyStruct;
 }
 
@@ -338,7 +468,7 @@ void dump_byte_array(byte *buffer, byte bufferSize) {
 	}
 }
 unsigned int ByteToInt(unsigned char highB, unsigned char lowB) {
-	int value;
+	unsigned int value;
 	value = highB;
 	value = value << 8;
 	value |= lowB;
